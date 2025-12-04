@@ -1,0 +1,18 @@
+manifest:
+  version: "0.10"
+
+  remotes:
+    - name: golioth
+      url-base: https://github.com/golioth
+
+  projects:
+    - name: golioth-firmware-sdk
+      remote: golioth
+      repo-path: golioth-firmware-sdk
+      path: modules/lib/golioth-firmware-sdk
+      revision: v0.15.0
+      west-commands: scripts/west-commands.yml
+      import: west-zephyr.yml
+
+  self:
+    path: app

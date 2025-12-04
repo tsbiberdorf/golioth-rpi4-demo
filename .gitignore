@@ -1,0 +1,31 @@
+# West workspace directories (fetched by west update)
+/zephyr/
+/modules/
+/bootloader/
+/tools/
+/.west/
+
+# Build output
+/build/
+/app/build/
+
+# Python virtual environment
+/.venv/
+/venv/
+
+# Credentials (never commit these!)
+credentials.env
+
+# IDE
+/.vscode/
+/.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Zephyr SDK
+zephyr-sdk-*/
