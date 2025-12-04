@@ -156,60 +156,75 @@ uart connected to pseudotty: /dev/pts/X
 *** Booting Zephyr OS build v3.7.0 ***
 [00:00:00.000,000] <inf> golioth_demo: Golioth RPi4 Demo Starting
 [00:00:00.000,000] <err> golioth_sys_zephyr: eventfd creation failed, errno: 22
-[00:00:00.000,000] <err> golioth_sys_zephyr: eventfd creation failed, errno: 22
 [00:00:00.000,000] <inf> golioth_mbox: Mbox created, bufsize: 1848, num_items: 10, item_size: 168
 [00:00:00.000,000] <inf> golioth_demo: Waiting for connection to Golioth...
 Network configured. Attaching to app...
 [00:00:07.320,000] <inf> golioth_coap_client_zephyr: Golioth CoAP client connected
 [00:00:07.320,000] <inf> golioth_demo: Golioth client connected!
 [00:00:07.320,000] <inf> golioth_demo: Hello from RPi4! Counter: 0
-[00:00:17.330,000] <inf> golioth_demo: Hello from RPi4! Counter: 1
 ```
 
 > **Note:** The `eventfd creation failed` errors are cosmetic and do not affect operation.
 
 Use `Ctrl+C` to stop.
 
-Check the [Golioth Console](https://console.golioth.io) to see your device online.
+## Bidirectional Communication Demo
 
-## Sending Data to LightDB State
+This demo shows data flowing both directions between device and cloud.
 
-The Zephyr demo establishes a connection but doesn't push data to LightDB. To send data visible in the Golioth Console, use the `send-data.sh` script.
+### Device → Cloud (Send Data)
 
-### Running the Data Sender
-
-Open a **second SSH terminal** and run:
+In a **second terminal**, run the data sender:
 ```bash
 ~/golioth-rpi4-demo/scripts/send-data.sh
 ```
 
-This script:
-- Sends a JSON payload with counter and source to LightDB State
-- Updates every 10 seconds
-- Uses `coap-client-gnutls` to communicate with Golioth
+This sends counter data to LightDB State every 10 seconds.
 
-Expected output:
-```
-Sending counter=0 to LightDB State...
-Sent!
-Sending counter=1 to LightDB State...
-Sent!
-```
-
-### Viewing Data in Golioth Console
-
+**View in Console:**
 1. Go to [Golioth Console](https://console.golioth.io)
-2. Navigate to your project → Devices → your device
-3. Click **LightDB State** tab
-4. You should see:
+2. Navigate to Devices → your device → **LightDB State** tab
+3. See the `state` object updating:
 ```json
    {
-     "counter": 5,
-     "source": "RPi4"
+     "state": {
+       "counter": 5,
+       "source": "RPi4"
+     }
    }
 ```
 
-The counter updates every 10 seconds.
+### Cloud → Device (Receive Data)
+
+**Set data in Console:**
+1. In **LightDB State** tab, edit the JSON to add a `config` section:
+```json
+   {
+     "state": {
+       "counter": 5,
+       "source": "RPi4"
+     },
+     "config": {
+       "message": "Hello from cloud!",
+       "interval": 5
+     }
+   }
+```
+2. Click **Save**
+
+**Read from device:**
+```bash
+source ~/golioth-rpi4-demo/credentials.env
+coap-client-gnutls -m get \
+  -u "$GOLIOTH_PSK_ID" \
+  -k "$GOLIOTH_PSK" \
+  "coaps://coap.golioth.io/.d/config"
+```
+
+Expected output:
+```json
+{"message":"Hello from cloud!","interval":5}
+```
 
 ## Complete Demo Setup
 
@@ -223,14 +238,26 @@ source credentials.env
 ./scripts/run.sh
 ```
 
-**Terminal 2 — Data Sender:**
+**Terminal 2 — Data Operations:**
 ```bash
+# Send data to cloud (runs continuously)
 ~/golioth-rpi4-demo/scripts/send-data.sh
+
+# Or read config from cloud (one-shot)
+source ~/golioth-rpi4-demo/credentials.env
+coap-client-gnutls -m get \
+  -u "$GOLIOTH_PSK_ID" \
+  -k "$GOLIOTH_PSK" \
+  "coaps://coap.golioth.io/.d/config"
 ```
 
 **In Golioth Console, show:**
-- **Summary tab:** Device online, Session Established timestamp
-- **LightDB State tab:** Live counter updates
+
+| Feature | Console Location | Description |
+|---------|------------------|-------------|
+| Device online | Summary tab | Session Established timestamp |
+| Data from device | LightDB State → `state` | Counter updating |
+| Data to device | LightDB State → `config` | Edit JSON, device reads |
 
 ## Quick Start (After Initial Setup)
 ```bash
@@ -270,13 +297,15 @@ west build
 - CoAP/DTLS communication
 - Zephyr SDK integration
 - Device appears online in Golioth Console
-- LightDB State data updates visible in console
+- Bidirectional data flow (device ↔ cloud)
 
 **Does not test:**
 - Target MCU memory constraints
 - PPP/modem driver integration
 - Real cellular throughput
 - Production flash partitioning
+- OTA firmware updates (requires MCUboot on real hardware)
+- Settings service (has threading issues on native_sim/aarch64)
 
 ## Troubleshooting
 
@@ -333,20 +362,6 @@ source .venv/bin/activate
 Use the run script which handles network setup:
 ```bash
 ./scripts/run.sh
-```
-
-Or manually setup networking:
-```bash
-sudo ip link delete zeth 2>/dev/null || true
-sudo ./build/zephyr/zephyr.exe &
-sleep 1
-sudo ip addr add 192.0.2.1/24 dev zeth
-sudo ip link set zeth up
-MAIN_IF=$(ip route | grep default | awk '{print $5}')
-sudo sysctl -w net.ipv4.ip_forward=1
-sudo iptables -t nat -A POSTROUTING -o $MAIN_IF -j MASQUERADE
-sudo iptables -A FORWARD -i zeth -j ACCEPT
-fg
 ```
 
 ### "iptables: command not found"
@@ -445,3 +460,20 @@ Key additions needed for target hardware:
 - Modem UART settings  
 - Flash partitioning for MCUBoot (if using OTA)
 - Remove hardcoded credentials, use settings subsystem
+
+## Scripts Reference
+
+### build.sh
+Builds the Zephyr application for native_sim/native/64.
+
+### run.sh
+Sets up TAP network interface and runs the Zephyr executable with proper networking.
+
+### send-data.sh
+Sends counter data to Golioth LightDB State every 10 seconds using coap-client.
+
+### setup-rpi.sh
+One-time setup script for fresh RPi4 (swap, dependencies, west init).
+
+### setup-net.sh
+Manual network setup (called automatically by run.sh).
