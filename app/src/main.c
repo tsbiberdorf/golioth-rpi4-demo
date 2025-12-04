@@ -1,6 +1,5 @@
 /*
  * Copyright (c) 2024 Golioth, Inc.
- *
  * SPDX-License-Identifier: Apache-2.0
  */
 
@@ -37,9 +36,7 @@ int main(void)
     int counter = 0;
 
     LOG_INF("Golioth RPi4 Demo Starting");
-    LOG_INF("Zephyr version: %s", KERNEL_VERSION_STRING);
 
-    /* Initialize Golioth client */
     client = golioth_client_create(&(struct golioth_client_config){
         .credentials = {
             .auth_type = GOLIOTH_TLS_AUTH_TYPE_PSK,
@@ -57,44 +54,19 @@ int main(void)
         return -1;
     }
 
-    /* Register event callback */
-    err = golioth_client_register_event_callback(client, on_client_event, NULL);
-    if (err) {
-        LOG_ERR("Failed to register event callback: %d", err);
-        return err;
-    }
+    golioth_client_register_event_callback(client, on_client_event, NULL);
 
-    /* Start the client */
     err = golioth_client_start(client);
     if (err) {
         LOG_ERR("Failed to start Golioth client: %d", err);
         return err;
     }
 
-    /* Wait for connection */
     LOG_INF("Waiting for connection to Golioth...");
     k_sem_take(&connected_sem, K_FOREVER);
 
-    /* Main loop - send periodic hello messages */
     while (true) {
         LOG_INF("Hello from RPi4! Counter: %d", counter);
-
-        /* Example: Set a LightDB State value */
-        char buf[32];
-        snprintf(buf, sizeof(buf), "%d", counter);
-        
-        err = golioth_lightdb_set_sync(client,
-                                       GOLIOTH_LIGHTDB_STATE_PATH("counter"),
-                                       GOLIOTH_CONTENT_TYPE_JSON,
-                                       buf,
-                                       strlen(buf),
-                                       K_SECONDS(5));
-        if (err) {
-            LOG_WRN("Failed to set counter: %d", err);
-        } else {
-            LOG_DBG("Counter updated in LightDB State");
-        }
-
         counter++;
         k_sleep(K_SECONDS(10));
     }
